@@ -1,0 +1,17 @@
+#!/bin/sh /etc/rc.common
+# The Pi 4 SDIO Wi-Fi card is probed before brcmfmac is loaded, then the
+# mmcnr host unbinds. Bind it again after modules are in, then start the AP
+# even when Ethernet already has an address.
+
+START=99
+STOP=10
+
+start() {
+	# Odroid-C4 has no onboard SDIO radio. A USB Wi-Fi stick, if fitted,
+	# is configured the same way as the Pi setup AP.
+	if [ ! -e /sys/class/net/wlan0 ]; then
+		return 0
+	fi
+	wifi config >/dev/null 2>&1 || true
+	/usr/sbin/spectre-ap || true
+}

@@ -1,0 +1,8 @@
+config global
+	option primary '#3dff6a'
+	option dark_primary '#3dff6a'
+	option blur '10'
+	option blur_dark '0'
+	option transparency '0.5'
+	option transparency_dark '0.94'
+	option mode 'dark'

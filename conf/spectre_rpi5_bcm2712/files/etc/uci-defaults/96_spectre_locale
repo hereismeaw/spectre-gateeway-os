@@ -1,0 +1,11 @@
+#!/bin/sh
+# Thailand. POSIX TZ '<+07>-7' is UTC+7. zonename is what LuCI shows.
+
+uci -q batch <<'EOF'
+set system.@system[0].timezone='<+07>-7'
+set system.@system[0].zonename='Asia/Bangkok'
+commit system
+EOF
+
+[ -x /etc/init.d/system ] && /etc/init.d/system reload
+exit 0

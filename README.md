@@ -1,119 +1,90 @@
-# ChirpStack Gateway OS
+# SpectreOS
 
-ChirpStack Gateway OS is an open-source [OpenWrt](https://openwrt.org/) based
-embedded OS for LoRa<sup>&reg;</sup> gateways. It provides a web-interface for
-configuration and contains pre-defined configuration options for common
-LoRa hardware to make it easy to setup a LoRa gateway and optionally a
-ChirpStack-based LoRaWAN<sup>&reg;</sup> Network Server.
+SpectreOS is a gateway operating system for LoRaWAN and Wi-Fi HaLow.
+It is built on OpenWrt and ChirpStack Gateway OS, then shaped for boards
+we actually flash: a Raspberry Pi 4 class concentrator, a Raspberry Pi 5,
+and a Hardkernel Odroid-C4.
 
-**Note:** If you are looking for the [Yocto](https://www.yoctoproject.org/)
-recipes of the previously Yocto based ChirpStack Gateway OS, please switch to
-the [v4_yocto](https://github.com/chirpstack/chirpstack-gateway-os/tree/v4_yocto)
-branch.
+The web interface is LuCI. The network server pieces keep their ChirpStack
+names. The product on the banner is SpectreOS 1.0.0.
 
-## Documentation and binaries
+## What you get
 
-Please refer to the [ChirpStack Gateway OS documentation](https://www.chirpstack.io/docs/chirpstack-gateway-os/)
-for documentation and pre-compiled images.
+- LoRaWAN region defaults to AS923, the plan used in Thailand. The 2.4 GHz
+  radio stays on ISM2400.
+- The clock is Asia/Bangkok, UTC+7.
+- A setup access point named `SpectreOS-<mac>` with passphrase `spectre168`
+  on `192.168.168.1`. Wired LAN stays a DHCP client, so the access point
+  does not collide with the router.
+- English menus, a dark olive theme, and a SpectreOS radios page that
+  selects the concentrator or the HaLow card.
+- ChirpStack concentrator, MQTT forwarder, and the gateway web UI.
 
-## Building from source
+## Boards
 
-### Requirements
+| Profile | Hardware | Image target |
+| --- | --- | --- |
+| `spectre_rpi4_bcm2711` | SenseCAP M1 and other Pi 4 / BCM2711 gateways, plus RAK7391 | `bcm27xx/bcm2711` |
+| `spectre_rpi5_bcm2712` | Raspberry Pi 5 | `bcm27xx/bcm2712` |
+| `spectre_odroid_c4` | Odroid-C4, Amlogic S905X3 | `meson/sm1` |
 
-Building ChirpStack Gateway OS requires:
+SenseCAP M1 has one mini-PCIe socket. Swap the LoRa concentrator and the
+Wio-WM6108; they do not share that socket. An AHPI7292S on the 40-pin
+header needs the switch set to Host before power-on, and it cannot share
+SPI0 with an SPI concentrator. USB LoRa can stay beside it.
 
-* [Docker](https://www.docker.com/)
+The Raspberry Pi 5 profile uses the 40-pin header. The Odroid-C4 profile
+uses a USB concentrator. The HaLow SPI overlay is built for the Pi header
+pinout. It has been applied and removed on a SenseCAP M1 while LoRa still
+owned the bus. The card itself has not been probed on Pi 5 or Odroid-C4.
 
-### Initialize
+## Build
 
-To initialize the [OpenWrt](https://openwrt.org/) build environment, run the
-following command:
+Docker is required. From this tree:
 
 ```bash
 make init
-```
-
-This will:
-
-* Clone the OpenWrt code
-* Fetch all the OpenWrt feeds, including the [ChirpStack OpenWrt Feed](https://github.com/chirpstack/chirpstack-openwrt-feed)
-* Symlink configuration and files
-
-### Update
-
-This step is not required after running `make init`, but allows you to update
-the OpenWrt source and feeds at a later point:
-
-```bash
-make update
-```
-
-### Build
-
-For building the ChirpStack Gateway OS, you must enter the Docker-based
-development environment first:
-
-```
 make devshell
 ```
 
-#### Switch configuration
-
-Each target and image has its own OpenWrt configuration file, files and
-patches. These can be found under the `conf` directory of this repository.
-
-To switch to one of these configuration environments, you must execute:
-
-```
-make switch-env ENV=name-of-env
-```
-
-Fo example if you would like to switch to `base_raspberrypi_bcm27xx_bcm2709`,
-you execute:
-
-```
-make switch-env ENV=base_raspberrypi_bcm27xx_bcm2709
-```
-
-This will:
-
-* Undo all previously applied patches.
-* Update the symlinks for OpenWrt configuration and files.
-* Apply all patches. 
-
-#### Building image
-
-Once the configuration has been set, run the following command to build the
-ChirpStack Gateway OS image:
+Inside the devshell, pick one profile and build it. One `make` produces
+one image.
 
 ```bash
-make
-```
-
-Note that this can take a couple of hours depending on the selected
-configuration and will require a significant amount of disk-space.
-
-#### Making configuration changes
-
-**Note:** The commands listed below must be executed within the `openwrt`
-directory.
-
-To make configuration changes (e.g. add additional packages), you can execute:
-
-```bash
-make menuconfig
-```
-
-As updates to OpenWrt packages can introduce new configuration options over
-time, you can run the following command to update the configuration:
-
-```bash
+make switch-env ENV=spectre_odroid_c4
+cd openwrt
 make defconfig
+make target/linux/refresh
+make -j"$(nproc)"
 ```
 
-Please refer also to the [OpenWrt build system usage documentation](https://openwrt.org/docs/guide-developer/toolchain/use-buildsystem).
+Use `spectre_rpi5_bcm2712` or `spectre_rpi4_bcm2711` the same way.
+The first Odroid-C4 build needs `make target/linux/refresh` so the kernel
+configuration is rewritten for the Meson target. Later builds of that
+same tree can skip it.
 
-## Links
+Images are written under `openwrt/bin/targets/`.
 
-* [ChirpStack documentation](https://www.chirpstack.io/)
-* [chirpstack-openwrt-feed](https://github.com/chirpstack/chirpstack-openwrt-feed) repository
+| Profile | Directory |
+| --- | --- |
+| Odroid-C4 | `openwrt/bin/targets/meson/sm1/` |
+| Raspberry Pi 5 | `openwrt/bin/targets/bcm27xx/bcm2712/` |
+| Raspberry Pi 4 / SenseCAP M1 | `openwrt/bin/targets/bcm27xx/bcm2711/` |
+
+Write the `.img.gz` to a microSD card. On the Odroid-C4 the signed
+bootloader sits in the first 4 MiB of that image. Do not run
+`make update` unless you intend to replace the pinned feeds. That refresh
+drops the local HaLow fixes that are not on the upstream pins yet.
+
+## Upstream
+
+SpectreOS tracks ChirpStack Gateway OS, OpenWrt 24.10, and the ChirpStack
+OpenWrt feed. Those histories stay on the `upstream` remotes. SpectreOS
+commits live on the `spectreos` branch.
+
+## License
+
+Inherited from OpenWrt and ChirpStack Gateway OS. See `COPYING` and the
+license headers in each package.
+
+Made in Phatthalung, Thailand

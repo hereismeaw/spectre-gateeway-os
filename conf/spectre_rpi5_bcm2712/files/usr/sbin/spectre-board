@@ -1,0 +1,30 @@
+#!/bin/sh
+# spectre-board m1|rak7391
+# SenseCAP M1 uses one SX1302 (RPi target). RAK7391 uses two slots.
+# Only one of those sets is started, so they do not share the SPI bus.
+
+mode=$1
+case "$mode" in
+	rpi5|pi5)
+		[ -x /etc/init.d/chirpstack-concentratord ] && /etc/init.d/chirpstack-concentratord enable
+		[ -x /etc/init.d/chirpstack-concentratord-slot1 ] && /etc/init.d/chirpstack-concentratord-slot1 disable
+		[ -x /etc/init.d/chirpstack-concentratord-slot2 ] && /etc/init.d/chirpstack-concentratord-slot2 disable
+		echo rpi5 > /etc/spectre-board
+		;;
+	m1|sensecap|sensecap-m1)
+		[ -x /etc/init.d/chirpstack-concentratord ] && /etc/init.d/chirpstack-concentratord enable
+		[ -x /etc/init.d/chirpstack-concentratord-slot1 ] && /etc/init.d/chirpstack-concentratord-slot1 disable
+		[ -x /etc/init.d/chirpstack-concentratord-slot2 ] && /etc/init.d/chirpstack-concentratord-slot2 disable
+		echo m1 > /etc/spectre-board
+		;;
+	rak7391|rak)
+		[ -x /etc/init.d/chirpstack-concentratord ] && /etc/init.d/chirpstack-concentratord disable
+		[ -x /etc/init.d/chirpstack-concentratord-slot1 ] && /etc/init.d/chirpstack-concentratord-slot1 enable
+		[ -x /etc/init.d/chirpstack-concentratord-slot2 ] && /etc/init.d/chirpstack-concentratord-slot2 enable
+		echo rak7391 > /etc/spectre-board
+		;;
+	*)
+		echo "usage: spectre-board rpi5|m1|rak7391" >&2
+		exit 1
+		;;
+esac

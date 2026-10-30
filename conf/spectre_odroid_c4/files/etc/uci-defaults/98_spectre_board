@@ -1,0 +1,5 @@
+#!/bin/sh
+# Odroid-C4 uses one USB SX1302 concentrator. The 40-pin header is not
+# the Raspberry Pi pinout, so the Pi SPI HaLow overlay is not applied.
+/usr/sbin/spectre-board odroid-c4
+exit 0

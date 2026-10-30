@@ -1,0 +1,22 @@
+#!/bin/sh /etc/rc.common
+# The Pi 4 SDIO Wi-Fi card is probed before brcmfmac is loaded, then the
+# mmcnr host unbinds. Bind it again after modules are in, then start the AP
+# even when Ethernet already has an address.
+
+START=99
+STOP=10
+
+start() {
+	# Pi 5 Wi-Fi is the same CYW43455, attached through RP1. Do not bind
+	# the Pi 4 mmcnr controller. Wait briefly for wlan0, then start the AP.
+	i=0
+	while [ ! -e /sys/class/net/wlan0 ] && [ "$i" -lt 15 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+	if [ ! -e /sys/class/net/wlan0 ]; then
+		return 0
+	fi
+	wifi config >/dev/null 2>&1 || true
+	/usr/sbin/spectre-ap || true
+}

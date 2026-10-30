@@ -1,0 +1,4 @@
+#!/bin/sh
+# Raspberry Pi 5 uses one SX1302 on the 40-pin header or a USB concentrator.
+/usr/sbin/spectre-board rpi5
+exit 0

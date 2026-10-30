@@ -1,0 +1,143 @@
+#!/bin/sh
+# Load one HaLow radio. SPI0 CE0 is shared with the SX1302, so the other
+# owner is unloaded first.
+#
+#   spectre-halow wm6108      Seeed Wio-WM6108 (Morse MM6108, SPI)
+#   spectre-halow ahpi7292s   Alfa AHPI7292S (Newracom NRC7292, SPI)
+#   spectre-halow none        Release SPI back to spidev
+
+OVERLAY=wm6108
+DTBO=/lib/firmware/spectre/wm6108-spi.dtbo
+CFG=/sys/kernel/config/device-tree/overlays/$OVERLAY
+
+log() {
+	logger -t spectre-halow "$*"
+	echo "spectre-halow: $*" >&2
+}
+
+remove_overlay() {
+	if [ -d "$CFG" ]; then
+		rmdir "$CFG" 2>/dev/null || {
+			sleep 1
+			rmdir "$CFG" 2>/dev/null || log "ถอด overlay HaLow ไม่ได้"
+		}
+	fi
+	return 0
+}
+
+apply_overlay() {
+	[ -f "$DTBO" ] || {
+		log "ไม่พบ $DTBO"
+		return 1
+	}
+	if [ ! -d /sys/kernel/config/device-tree ]; then
+		mount -t configfs none /sys/kernel/config 2>/dev/null || {
+			log "configfs ไม่พร้อม"
+			return 1
+		}
+	fi
+	mkdir -p /sys/kernel/config/device-tree/overlays || return 1
+	remove_overlay
+	mkdir -p "$CFG" || return 1
+	if ! cat "$DTBO" > "$CFG/dtbo"; then
+		log "เขียน overlay ไม่สำเร็จ"
+		rmdir "$CFG" 2>/dev/null
+		return 1
+	fi
+	if [ -f "$CFG/status" ]; then
+		status=$(cat "$CFG/status" 2>/dev/null)
+		case "$status" in
+		*applied*) ;;
+		*)
+			log "overlay ไม่ถูกใช้: ${status:-ว่าง}"
+			rmdir "$CFG" 2>/dev/null
+			return 1
+			;;
+		esac
+	fi
+	return 0
+}
+
+bind_spidev() {
+	[ -e /sys/bus/spi/drivers/spidev/bind ] || return 0
+	echo spi0.0 > /sys/bus/spi/drivers/spidev/bind 2>/dev/null
+	return 0
+}
+
+unbind_spidev() {
+	[ -e /sys/bus/spi/drivers/spidev/unbind ] || return 0
+	echo spi0.0 > /sys/bus/spi/drivers/spidev/unbind 2>/dev/null
+	return 0
+}
+
+wait_phy() {
+	pattern=$1
+	i=0
+	while [ "$i" -lt 20 ]; do
+		for dev in /sys/class/ieee80211/*; do
+			[ -e "$dev/device/driver" ] || continue
+			base=$(basename "$(readlink -f "$dev/device/driver")")
+			echo "$base" | grep -q "$pattern" && return 0
+		done
+		i=$((i + 1))
+		sleep 1
+	done
+	return 1
+}
+
+unload_all() {
+	rmmod nrc 2>/dev/null
+	rmmod mm6108_sdio 2>/dev/null
+	remove_overlay
+	bind_spidev
+	return 0
+}
+
+mode=$1
+case "$mode" in
+none|off|unload|'')
+	unload_all
+	;;
+wm6108|morse|mm6108)
+	rmmod nrc 2>/dev/null
+	rmmod mm6108_sdio 2>/dev/null
+	apply_overlay || exit 1
+	modprobe mm6108_sdio country=SG enable_ext_xtal_init=1 || {
+		log "modprobe mm6108_sdio ไม่สำเร็จ"
+		exit 1
+	}
+	if wait_phy '^morse_'; then
+		log "เห็นวิทยุ Morse"
+	else
+		log "ยังไม่เห็นวิทยุ Morse  overlay ค้างไว้เพราะซ็อกเก็ตนี้ถูกเลือกเป็น Wio-WM6108"
+	fi
+	;;
+ahpi7292s|nrc|nrc7292)
+	rmmod nrc 2>/dev/null
+	rmmod mm6108_sdio 2>/dev/null
+	remove_overlay
+	unbind_spidev
+	modprobe nrc \
+		fw_name=nrc7292_cspi.bin \
+		bd_name=nrc7292_bd.dat \
+		spi_bus_num=0 \
+		spi_cs_num=0 \
+		spi_gpio_irq=5 \
+		hifspeed=20000000 \
+		spi_polling_interval=0 || {
+		log "modprobe nrc ไม่สำเร็จ"
+		bind_spidev
+		exit 1
+	}
+	if wait_phy '^nrc'; then
+		log "เห็นวิทยุ NRC"
+	else
+		log "ยังไม่เห็นวิทยุ NRC"
+	fi
+	;;
+*)
+	echo "usage: spectre-halow wm6108|ahpi7292s|none" >&2
+	exit 1
+	;;
+esac
+exit 0

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Try once during first boot. If the 64-bit brcmfmac phy is not up yet,
+# /etc/hotplug.d/ieee80211/20-spectre-ap finishes the job.
+/usr/sbin/spectre-ap && touch /etc/spectre-ap.done
+exit 0

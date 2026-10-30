@@ -1,0 +1,1 @@
+# No quilt patches. The Odroid-C4 image uses the meson target as-is.

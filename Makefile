@@ -41,7 +41,7 @@ switch-env:
 	ln -s ${ENV}/.config conf/.config
 
 	@echo "Applying patches"
-	cd openwrt && quilt push -a
+	cd openwrt && quilt push -a; status=$$?; [ $$status -eq 0 ] || [ $$status -eq 2 ]
 
 # Clean the OpenWrt environment.
 clean:

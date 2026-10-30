@@ -1,0 +1,26 @@
+#!/bin/sh
+# SSH on port 22 for root, on the LAN and on the setup AP (both are in the
+# lan firewall zone). Password login stays on so a new terminal can connect
+# after the first boot.
+
+uci -q batch <<'EOF'
+set dropbear.main=dropbear
+set dropbear.main.enable='1'
+set dropbear.main.PasswordAuth='on'
+set dropbear.main.RootPasswordAuth='on'
+set dropbear.main.Port='22'
+delete dropbear.main.Interface
+commit dropbear
+
+delete firewall.allow_ssh
+set firewall.allow_ssh=rule
+set firewall.allow_ssh.name='Allow-SSH'
+set firewall.allow_ssh.src='lan'
+set firewall.allow_ssh.proto='tcp'
+set firewall.allow_ssh.dest_port='22'
+set firewall.allow_ssh.target='ACCEPT'
+commit firewall
+EOF
+
+[ -x /etc/init.d/dropbear ] && /etc/init.d/dropbear enable
+exit 0
