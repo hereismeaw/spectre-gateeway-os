@@ -84,7 +84,25 @@ commits live on the `spectreos` branch.
 
 ## License
 
-Inherited from OpenWrt and ChirpStack Gateway OS. See `COPYING` and the
-license headers in each package.
+SpectreOS is not an official OpenWrt or ChirpStack release. OpenWrt and
+ChirpStack are trademarks of their owners. LoRa and LoRaWAN are trademarks
+of Semtech. The names are used here only to say what this tree is built from.
+
+The OpenWrt tree in `openwrt/` is GPL-2.0-only. See `openwrt/COPYING`.
+Changes SpectreOS makes to that tree stay under GPL-2.0-only. Copyright
+notices in the upstream files stay in place.
+
+The ChirpStack OpenWrt feed is MIT, copyright Orne Brocaar, except where a
+file states another license. See `feeds/chirpstack-openwrt-feed/LICENSE`.
+That MIT text stays with the feed.
+
+A binary image built from this repository is tied to the Git commit that
+produced it. The commit on the `spectreos` branch is the corresponding
+source for the GPL-2.0-only parts.
+
+Some files in an image are not under those licenses. The Odroid-C4 bootloader
+is signed with Amlogic firmware downloaded at build time. It is not part of
+this Git repository and it is not GPL. The Broadcom/Cypress Wi-Fi firmware
+shipped by OpenWrt stays under the license file in that package.
 
 Made in Phatthalung, Thailand
