@@ -1,5 +1,7 @@
 # SpectreOS
 
+![SpectreOS](Logo/banner.png)
+
 SpectreOS is a gateway operating system for LoRaWAN and Wi-Fi HaLow.
 It is built on OpenWrt and ChirpStack Gateway OS, then shaped for boards
 we actually flash: a Raspberry Pi 4 class concentrator, a Raspberry Pi 5,
