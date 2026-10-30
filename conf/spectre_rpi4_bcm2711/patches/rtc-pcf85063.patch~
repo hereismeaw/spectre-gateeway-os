@@ -1,0 +1,29 @@
+Index: openwrt/package/kernel/linux/modules/rtc.mk
+===================================================================
+--- openwrt.orig/package/kernel/linux/modules/rtc.mk
++++ openwrt/package/kernel/linux/modules/rtc.mk
+@@ -135,6 +135,24 @@ endef
+ $(eval $(call KernelPackage,rtc-pcf8563))
+ 
+ 
++define KernelPackage/rtc-pcf85063
++  SUBMENU:=\$(RTC_MENU)
++  TITLE:=NXP PCF85063 and PCF85063A RTC support
++  DEFAULT:=m if ALL_KMODS && RTC_SUPPORT
++  DEPENDS:=+kmod-i2c-core +kmod-regmap-i2c
++  KCONFIG:=CONFIG_RTC_DRV_PCF85063 \
++	CONFIG_RTC_CLASS=y
++  FILES:=\$(LINUX_DIR)/drivers/rtc/rtc-pcf85063.ko
++  AUTOLOAD:=\$(call AutoProbe,rtc-pcf85063)
++endef
++
++define KernelPackage/rtc-pcf85063/description
++ Kernel module for the NXP PCF85063AT RTC on the RAK7391 (I2C address 0x51).
++endef
++
++\$(eval \$(call KernelPackage,rtc-pcf85063))
++
++
+ define KernelPackage/rtc-pcf2123
+   SUBMENU:=$(RTC_MENU)
+   TITLE:=Philips PCF2123 RTC support

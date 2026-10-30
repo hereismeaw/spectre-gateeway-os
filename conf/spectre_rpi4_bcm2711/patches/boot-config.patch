@@ -1,0 +1,24 @@
+Index: openwrt/target/linux/bcm27xx/image/config.txt
+===================================================================
+--- openwrt.orig/target/linux/bcm27xx/image/config.txt
++++ openwrt/target/linux/bcm27xx/image/config.txt
+@@ -11,4 +11,18 @@
+ include distroconfig.txt
+ 
+ [all]
+-# Place your custom settings here.
++dtparam=spi=on
++enable_uart=1
++dtparam=i2c1=on
++dtparam=i2c_arm=on
++dtoverlay=dwc2
++# Pi 4 / CM4 image boots kernel8.img
++arm_64bit=1
++
++# Uncomment the line below when shield uses PIN26 as GPIO7"
++#dtoverlay=spi0-1cs
++
++# RAK7391 (CM4) only. PCF85063AT on i2c1, address 0x51.
++[cm4]
++dtoverlay=i2c-rtc,pcf85063a,addr=0x51
++[all]

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Onboard Broadcom AP. On 64-bit Pi 4 / CM4, brcmfmac appears after
+# uci-defaults have already run and been deleted, so the AP was never
+# configured. This hook runs when the phy shows up.
+
+[ "$ACTION" = "add" ] || exit 0
+[ -f /etc/spectre-ap.done ] && exit 0
+
+logger -t spectre-ap "configuring onboard AP"
+sleep 2
+wifi config >/dev/null 2>&1 || true
+/usr/sbin/spectre-ap && touch /etc/spectre-ap.done
+exit 0

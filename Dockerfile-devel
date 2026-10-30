@@ -37,3 +37,7 @@ RUN apt-get update && apt-get install --no-install-recommends --no-install-sugge
   useradd -m -s '/bin/bash' -U 'buildbot'
 
 USER buildbot
+
+# OpenMANET packages clone submodules with git@github.com: URLs. The build
+# container has no SSH key, so rewrite those to public HTTPS.
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:"

@@ -1,0 +1,87 @@
+#!/bin/sh
+# Point the onboard SDIO radio at the SpectreOS access point.
+# HaLow radios (Morse SPI/SDIO, NRC7292) are left alone.
+
+. /lib/functions.sh
+
+mac_tail() {
+	local iface mac
+	for iface in eth0 end0 wlan0; do
+		[ -r "/sys/class/net/$iface/address" ] || continue
+		mac=$(cat "/sys/class/net/$iface/address")
+		[ -n "$mac" ] && [ "$mac" != "00:00:00:00:00:00" ] && break
+	done
+	echo "$mac" | awk -F: '{print $4$5$6}'
+}
+
+TAIL=$(mac_tail)
+[ -n "$TAIL" ] || TAIL="000000"
+
+changed=0
+setup_radio() {
+	local name="$1"
+	local path hw
+	config_get path "$name" path
+	config_get hw "$name" type
+	# Onboard Pi 4 / CM4 radio is the SDIO/mmc brcmfmac device.
+	case "$path" in
+		*mmc*) ;;
+		*) return 0 ;;
+	esac
+	[ "$hw" = "mac80211" ] || return 0
+
+	# Stay up while Ethernet is connected. A separate subnet so the AP
+	# does not claim 192.168.0.1, which is the wired router on many LANs.
+	uci -q delete "wireless.${name}.disabled"
+	uci -q set "wireless.${name}.country=TH"
+	uci -q set "wireless.${name}.band=2g"
+	uci -q set "wireless.${name}.htmode=HT20"
+	uci -q set "wireless.${name}.channel=6"
+
+	local iface
+	iface=$(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^=]*\)\.device='${name}'/\1/p" | head -n 1)
+	if [ -z "$iface" ]; then
+		iface=$(uci add wireless wifi-iface)
+		uci -q set "wireless.${iface}.device=${name}"
+	fi
+	uci -q set "wireless.${iface}.mode=ap"
+	uci -q set "wireless.${iface}.network=wwan"
+	uci -q set "wireless.${iface}.encryption=psk2"
+	uci -q set "wireless.${iface}.ssid=SpectreOS-${TAIL}"
+	uci -q set "wireless.${iface}.key=spectre168"
+	uci -q delete "wireless.${iface}.disabled"
+	changed=1
+}
+
+config_load wireless
+config_foreach setup_radio wifi-device
+[ "$changed" = 1 ] || exit 1
+
+uci -q batch << EOI
+set dhcp.wwan=dhcp
+set dhcp.wwan.interface='wwan'
+set dhcp.wwan.start='100'
+set dhcp.wwan.limit='150'
+set dhcp.wwan.leasetime='12h'
+commit dhcp
+
+set network.wwan=interface
+set network.wwan.proto='static'
+set network.wwan.ipaddr='192.168.168.1'
+set network.wwan.netmask='255.255.255.0'
+commit network
+commit wireless
+EOI
+
+# Attach the AP network to the lan firewall zone when that zone exists.
+zone=$(uci show firewall 2>/dev/null | sed -n "s/^firewall\.\(@zone\[[0-9]*\]\)\.name='lan'/\1/p" | head -n 1)
+if [ -n "$zone" ]; then
+	uci -q del_list "firewall.${zone}.network=wwan"
+	uci -q add_list "firewall.${zone}.network=wwan"
+	uci -q set "firewall.${zone}.masq=1"
+	uci commit firewall
+fi
+
+wifi reload >/dev/null 2>&1 || wifi up >/dev/null 2>&1 || true
+logger -t spectre-ap "AP SpectreOS-${TAIL} on 192.168.168.1"
+exit 0

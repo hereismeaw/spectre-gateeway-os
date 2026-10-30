@@ -1,0 +1,5 @@
+#!/bin/sh
+# SenseCAP M1 is the default concentrator. RAK7391 support is installed
+# and switched on with: spectre-board rak7391
+/usr/sbin/spectre-board m1
+exit 0

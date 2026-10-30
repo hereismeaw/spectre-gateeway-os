@@ -1,0 +1,13 @@
+Index: openwrt/target/linux/bcm27xx/image/Makefile
+===================================================================
+--- openwrt.orig/target/linux/bcm27xx/image/Makefile
++++ openwrt/target/linux/bcm27xx/image/Makefile
+@@ -188,7 +188,7 @@ define Device/rpi-4
+   DEVICE_PACKAGES := \
+ 	cypress-firmware-43455-sdio \
+ 	brcmfmac-nvram-43455-sdio \
+-	kmod-brcmfmac wpad-basic-mbedtls \
++	kmod-brcmfmac wpad-openssl \
+ 	kmod-i2c-bcm2835 kmod-spi-bcm2835 \
+ 	kmod-spi-bcm2835-aux \
+ 	kmod-i2c-brcmstb \

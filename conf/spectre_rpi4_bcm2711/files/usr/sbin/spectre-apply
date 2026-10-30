@@ -1,0 +1,272 @@
+#!/bin/sh
+# Apply /etc/config/spectre: one SPI radio at a time, USB LoRa may sit beside AHPI7292S.
+
+log() {
+	logger -t spectre "$*"
+	echo "spectre: $*" >&2
+}
+
+set_svc() {
+	name=$1
+	want=$2
+	[ -x "/etc/init.d/$name" ] || return 0
+	if [ "$want" = 1 ]; then
+		/etc/init.d/"$name" enable
+		/etc/init.d/"$name" restart
+	else
+		/etc/init.d/"$name" stop
+		/etc/init.d/"$name" disable
+	fi
+}
+
+set_enabled() {
+	cfg=$1
+	want=$2
+	uci -q get "$cfg.@global[0]" >/dev/null 2>&1 || return 0
+	uci set "$cfg.@global[0].enabled=$want"
+}
+
+unload_halow() {
+	/usr/sbin/spectre-halow none
+	return 0
+}
+
+halow_plan() {
+	plan=$(uci -q get spectre.main.halow_plan || echo '43/1')
+	case "$plan" in
+	37/1|39/1|41/1|43/1|45/1|38/2|42/2|40/4) ;;
+	*) plan='43/1' ;;
+	esac
+	halow_channel=${plan%/*}
+	halow_bw=${plan#*/}
+}
+
+pick_halow_iface() {
+	radio=$1
+	iface=
+	for sec in $(uci show wireless | sed -n "s/^wireless\.\([^=]*\)=wifi-iface$/\1/p"); do
+		owner=$(uci -q get "wireless.${sec}.device")
+		if [ "$owner" = "$radio" ]; then
+			iface=$sec
+			return 0
+		fi
+	done
+	iface=halow
+	uci set "wireless.${iface}=wifi-iface"
+	uci set "wireless.${iface}.device=${radio}"
+}
+
+configure_halow() {
+	kind=$1
+	mode=$(uci -q get spectre.main.halow_mode || echo ap)
+	ssid=$(uci -q get spectre.main.halow_ssid || echo SpectreOS-HaLow)
+	key=$(uci -q get spectre.main.halow_key || echo spectre168)
+	bcf=$(uci -q get spectre.main.halow_bcf || echo bcf_fgh100mhaamd.bin)
+	case "$mode" in
+	ap|sta|mesh) ;;
+	*) mode=ap ;;
+	esac
+	halow_plan
+
+	wifi config
+
+	dev=
+	for sec in $(uci show wireless | sed -n "s/^wireless\.\([^=]*\)=wifi-device$/\1/p"); do
+		type=$(uci -q get "wireless.${sec}.type")
+		if [ "$kind" = wm6108 ] && [ "$type" = morse ]; then
+			dev=$sec
+			break
+		fi
+		if [ "$kind" = ahpi7292s ] && [ "$type" = mac80211 ]; then
+			path=$(uci -q get "wireless.${sec}.path")
+			phy=$(iwinfo nl80211 phyname "path=${path}" 2>/dev/null)
+			[ -n "$phy" ] || continue
+			base=$(basename "$(readlink -f "/sys/class/ieee80211/${phy}/device/driver" 2>/dev/null)")
+			echo "$base" | grep -q '^nrc' || continue
+			dev=$sec
+			break
+		fi
+	done
+
+	if [ -z "$dev" ]; then
+		log "ยังไม่พบวิทยุ HaLow ใน wireless จึงยังไม่เขียน SSID"
+		return 0
+	fi
+
+	pick_halow_iface "$dev"
+	uci set "wireless.${dev}.disabled=0"
+	uci set "wireless.${dev}.country=SG"
+	if [ "$kind" = wm6108 ]; then
+		uci set "wireless.${dev}.band=s1g"
+		uci set "wireless.${dev}.hwmode=11ah"
+		uci set "wireless.${dev}.channel=${halow_channel}"
+		uci set "wireless.${dev}.s1g_chanbw=${halow_bw}"
+		uci set "wireless.${dev}.bcf=${bcf}"
+	fi
+
+	uci set "wireless.${iface}.mode=${mode}"
+	uci set "wireless.${iface}.network=halow"
+	uci set "wireless.${iface}.encryption=sae"
+	uci set "wireless.${iface}.key=${key}"
+	if [ "$mode" = mesh ]; then
+		uci set "wireless.${iface}.mesh_id=${ssid}"
+		uci -q delete "wireless.${iface}.ssid"
+	else
+		uci set "wireless.${iface}.ssid=${ssid}"
+		uci -q delete "wireless.${iface}.mesh_id"
+	fi
+	if [ "$mode" = ap ]; then
+		uci set "wireless.${iface}.wds=1"
+	else
+		uci -q delete "wireless.${iface}.wds"
+	fi
+	uci commit wireless
+
+	uci -q batch <<EOF
+set network.halow=interface
+set network.halow.proto='static'
+set network.halow.ipaddr='192.168.11.1'
+set network.halow.netmask='255.255.255.0'
+set dhcp.halow=dhcp
+set dhcp.halow.interface='halow'
+set dhcp.halow.start='100'
+set dhcp.halow.limit='50'
+set dhcp.halow.leasetime='12h'
+EOF
+	uci commit network
+	uci commit dhcp
+
+	zone=$(uci show firewall 2>/dev/null | sed -n "s/^firewall\.\(@zone\[[0-9]*\]\)\.name='lan'/\1/p" | head -n 1)
+	if [ -n "$zone" ]; then
+		uci -q del_list "firewall.${zone}.network=halow"
+		uci -q add_list "firewall.${zone}.network=halow"
+		uci commit firewall
+	fi
+
+	/usr/sbin/spectre-ap >/dev/null 2>&1 || true
+	ubus call network reload >/dev/null 2>&1 || /etc/init.d/network reload
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+	/etc/init.d/firewall reload >/dev/null 2>&1 || true
+	wifi up "$dev" || log "เปิด $dev ไม่สำเร็จ"
+	log "ตั้ง HaLow ${kind} ที่ ${dev} โหมด ${mode} SSID ${ssid} ช่อง ${halow_channel}/${halow_bw}"
+}
+
+board=$(uci -q get spectre.main.board || echo m1)
+m1_socket=$(uci -q get spectre.main.m1_socket || echo lora)
+m1_lora=$(uci -q get spectre.main.m1_lora || echo spi)
+m1_hat=$(uci -q get spectre.main.m1_hat || echo none)
+rak_halow=$(uci -q get spectre.main.rak_halow || echo none)
+rak_halow_slot=$(uci -q get spectre.main.rak_halow_slot || echo 1)
+rak_slot1=$(uci -q get spectre.main.rak_slot1 || echo 1)
+rak_slot2=$(uci -q get spectre.main.rak_slot2 || echo 1)
+
+halow=none
+lora_m1=0
+lora_usb=0
+
+case "$board" in
+m1)
+	case "$m1_socket" in
+	lora)
+		lora_m1=1
+		[ "$m1_lora" = usb ] && lora_usb=1
+		;;
+	wm6108)
+		halow=wm6108
+		;;
+	empty)
+		;;
+	*)
+		log "ซ็อกเก็ตไม่รู้จัก: $m1_socket"
+		exit 1
+		;;
+	esac
+	if [ "$m1_hat" = ahpi7292s ]; then
+		if [ "$halow" != none ] || [ "$lora_m1" = 1 -a "$lora_usb" != 1 ]; then
+			log "AHPI7292S ใช้ SPI ร่วมกับ LoRa แบบ SPI หรือ Wio-WM6108 ไม่ได้"
+			exit 1
+		fi
+		halow=ahpi7292s
+	fi
+	rak_slot1=0
+	rak_slot2=0
+	;;
+rak7391)
+	if [ "$rak_halow" = wm6108 ]; then
+		if [ "$rak_halow_slot" = 2 ]; then
+			rak_slot2=0
+		else
+			rak_halow_slot=1
+			rak_slot1=0
+		fi
+		uci set spectre.main.rak_halow_slot="$rak_halow_slot"
+		uci set spectre.main.rak_slot1="$rak_slot1"
+		uci set spectre.main.rak_slot2="$rak_slot2"
+		uci commit spectre
+	fi
+	halow=$rak_halow
+	;;
+*)
+	log "บอร์ดไม่รู้จัก: $board"
+	exit 1
+	;;
+esac
+
+if [ "$board" = m1 ]; then
+	echo m1 > /etc/spectre-board
+else
+	echo rak7391 > /etc/spectre-board
+fi
+
+# Stop radios before changing who owns SPI.
+set_svc chirpstack-concentratord 0
+set_svc chirpstack-concentratord-slot1 0
+set_svc chirpstack-concentratord-slot2 0
+set_svc chirpstack-mqtt-forwarder 0
+set_svc chirpstack-mqtt-forwarder-slot1 0
+set_svc chirpstack-mqtt-forwarder-slot2 0
+unload_halow
+
+if [ "$lora_m1" = 1 ]; then
+	chipset=$(uci -q get chirpstack-concentratord.@global[0].chipset)
+	[ -n "$chipset" ] || uci set chirpstack-concentratord.@global[0].chipset='sx1302'
+	uci set chirpstack-concentratord.@sx1302[0].sx1302_reset_pin='17'
+	if [ "$lora_usb" = 1 ]; then
+		uci set chirpstack-concentratord.@sx1302[0].usb='1'
+		uci set chirpstack-concentratord.@sx1302[0].com_dev_path='/dev/ttyACM0'
+	else
+		uci set chirpstack-concentratord.@sx1302[0].usb='0'
+		uci -q delete chirpstack-concentratord.@sx1302[0].com_dev_path
+	fi
+fi
+set_enabled chirpstack-concentratord "$lora_m1"
+set_enabled chirpstack-mqtt-forwarder "$lora_m1"
+uci commit chirpstack-concentratord
+uci commit chirpstack-mqtt-forwarder
+
+set_enabled chirpstack-concentratord-slot1 "$rak_slot1"
+set_enabled chirpstack-concentratord-slot2 "$rak_slot2"
+set_enabled chirpstack-mqtt-forwarder-slot1 "$rak_slot1"
+set_enabled chirpstack-mqtt-forwarder-slot2 "$rak_slot2"
+uci commit chirpstack-concentratord-slot1
+uci commit chirpstack-concentratord-slot2
+uci commit chirpstack-mqtt-forwarder-slot1
+uci commit chirpstack-mqtt-forwarder-slot2
+
+if [ "$halow" != none ]; then
+	/usr/sbin/spectre-halow "$halow" || {
+		log "โหลด HaLow $halow ไม่สำเร็จ"
+		exit 1
+	}
+	configure_halow "$halow" || log "ตั้งค่า HaLow ไม่ครบ"
+fi
+
+set_svc chirpstack-concentratord "$lora_m1"
+set_svc chirpstack-mqtt-forwarder "$lora_m1"
+set_svc chirpstack-concentratord-slot1 "$rak_slot1"
+set_svc chirpstack-mqtt-forwarder-slot1 "$rak_slot1"
+set_svc chirpstack-concentratord-slot2 "$rak_slot2"
+set_svc chirpstack-mqtt-forwarder-slot2 "$rak_slot2"
+
+log "ใช้บอร์ด $board, HaLow ${halow}"
+exit 0

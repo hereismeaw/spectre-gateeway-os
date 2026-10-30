@@ -2,3 +2,7 @@ src-git packages https://git.openwrt.org/feed/packages.git^0c8f5f2ed91600b04ba63
 src-git luci https://git.openwrt.org/project/luci.git^3cf713a30bf456af74f9393096c2f7eb770b3ae2
 src-git routing https://git.openwrt.org/feed/routing.git^cd05be684e670095d20663d1c41766cf8b54de61
 src-link chirpstack /workdir/feeds/chirpstack-openwrt-feed
+# OpenMANET (https://github.com/openmanet) pins, matching their 24.10 firmware.
+src-git openmanet https://github.com/OpenMANET/packages.git^4736e44791166e3252ddbc4f050a784b8b5ab062
+src-git morse https://github.com/MorseMicro/morse-feed.git^fc332b01aa2df952e057efe73763de3ff71cb3b0
+src-git gateworks https://github.com/Gateworks/gw-openwrt-packages.git^d1d23cd0059fbee84e8d5087b47d93213d8be587
